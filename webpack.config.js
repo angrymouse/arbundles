@@ -5,6 +5,7 @@ const { DuplicatesPlugin } = require("inspectpack/plugin");
 module.exports = {
   entry: ["./webIndex.ts"],
   devtool: "source-map",
+  target: 'node',
   mode: "production",
   module: {
     rules: [
