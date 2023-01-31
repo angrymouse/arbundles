@@ -1,15 +1,14 @@
 import { byteArrayToLong } from "./utils";
-import { tagsParser } from "./parser";
 import base64url from "base64url";
 import { Buffer } from "buffer";
 import { sign } from "./ar-data-bundle";
 import { BundleItem } from "./BundleItem";
 import { indexToType, Signer } from "./signing/index";
 import { getSignatureData } from "./ar-data-base";
-import axios, { AxiosResponse } from "axios";
 import { SIG_CONFIG, SignatureConfig } from "./constants";
 import * as crypto from "crypto";
 import Arweave from "arweave";
+import { deserializeTags } from "./tags";
 
 export const MIN_BINARY_SIZE = 80;
 
@@ -43,6 +42,12 @@ export default class DataItem implements BundleItem {
       case 4: {
         return SignatureConfig.SOLANA;
       }
+      case 5: {
+        return SignatureConfig.INJECTEDAPTOS;
+      }
+      case 6: {
+        return SignatureConfig.MULTIAPTOS;
+      }
       default: {
         throw new Error("Unknown signature type: " + signatureTypeVal);
       }
@@ -75,6 +80,14 @@ export default class DataItem implements BundleItem {
 
   get signature(): string {
     return base64url.encode(this.rawSignature);
+  }
+
+  set rawOwner(pubkey: Buffer) {
+    if (pubkey.byteLength != this.ownerLength)
+      throw new Error(
+        `Expected raw owner (pubkey) to be ${this.ownerLength} bytes, got ${pubkey.byteLength} bytes.`,
+      );
+    this.binary.set(pubkey, 2 + this.signatureLength);
   }
 
   get signatureLength(): number {
@@ -129,7 +142,7 @@ export default class DataItem implements BundleItem {
     return this.binary.subarray(tagsStart + 16, tagsStart + 16 + tagsSize);
   }
 
-  get tags(): { name: string; value: string; }[] {
+  get tags(): { name: string; value: string }[] {
     const tagsStart = this.getTagsStart();
     const tagsCount = byteArrayToLong(
       this.binary.subarray(tagsStart, tagsStart + 8),
@@ -142,14 +155,14 @@ export default class DataItem implements BundleItem {
       this.binary.subarray(tagsStart + 8, tagsStart + 16),
     );
 
-    return tagsParser.fromBuffer(
+    return deserializeTags(
       Buffer.from(
         this.binary.subarray(tagsStart + 16, tagsStart + 16 + tagsSize),
       ),
     );
   }
 
-  get tagsB64Url(): { name: string; value: string; }[] {
+  get tagsB64Url(): { name: string; value: string }[] {
     const _tags = this.tags;
     return _tags.map((t) => ({
       name: base64url.encode(t.name),
@@ -215,7 +228,7 @@ export default class DataItem implements BundleItem {
     data: string;
     signature: string;
     target: string;
-    tags: { name: string; value: string; }[];
+    tags: { name: string; value: string }[];
   } {
     return {
       signature: this.signature,
@@ -227,30 +240,6 @@ export default class DataItem implements BundleItem {
       })),
       data: this.data,
     };
-  }
-
-  /**
-   * @deprecated Since version 0.3.0. Will be deleted in version 0.4.0. Use @bundlr-network/client package instead to interact with Bundlr
-   */
-  public async sendToBundler(bundler: string): Promise<AxiosResponse> {
-    const headers = {
-      "Content-Type": "application/octet-stream",
-    };
-
-    if (!this.isSigned())
-      throw new Error("You must sign before sending to bundler");
-    const response = await axios.post(`${bundler}/tx`, this.getRaw(), {
-      headers,
-      timeout: 100000,
-      maxBodyLength: Infinity,
-      validateStatus: (status) =>
-        (status > 200 && status < 300) || status !== 402,
-    });
-
-    if (response.status === 402)
-      throw new Error("Not enough funds to send data");
-
-    return response;
   }
 
   /**
@@ -280,7 +269,7 @@ export default class DataItem implements BundleItem {
 
     if (numberOfTags > 0) {
       try {
-        const tags: { name: string; value: string; }[] = tagsParser.fromBuffer(
+        const tags: { name: string; value: string }[] = deserializeTags(
           Buffer.from(
             buffer.subarray(tagsStart + 16, tagsStart + 16 + numberOfTagBytes),
           ),

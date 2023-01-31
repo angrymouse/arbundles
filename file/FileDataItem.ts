@@ -2,18 +2,19 @@ import base64url from "base64url";
 import * as fs from "fs";
 import { PathLike } from "fs";
 import { byteArrayToLong } from "../src/utils";
-import { tagsParser } from "../src/parser";
 import { BundleItem } from "../src/BundleItem";
 import { deepHash } from "../src";
 import { stringToBuffer } from "arweave/node/lib/utils";
 import Arweave from "arweave";
-import { promisify } from "util";
 import { indexToType, Signer } from "../src/signing";
 import axios, { AxiosResponse } from "axios";
 import { SIG_CONFIG } from "../src/constants";
+import { promisify } from "util";
+import { deserializeTags } from "../src/tags";
 
-const write = promisify(fs.write);
 const read = promisify(fs.read);
+const write = promisify(fs.write);
+
 export default class FileDataItem implements BundleItem {
   public readonly filename: PathLike;
   async signatureLength(): Promise<number> {
@@ -89,7 +90,7 @@ export default class FileDataItem implements BundleItem {
     ).then((r) => r.buffer);
     if (numberOfTags > 0) {
       try {
-        tagsParser.fromBuffer(tagsBytes);
+        deserializeTags(tagsBytes);
       } catch (e) {
         await handle.close();
         return false;
@@ -275,7 +276,7 @@ export default class FileDataItem implements BundleItem {
   async tags(): Promise<{ name: string; value: string }[]> {
     const tagsBytes = await this.rawTags();
     if (tagsBytes.byteLength === 0) return [];
-    return tagsParser.fromBuffer(tagsBytes);
+    return deserializeTags(tagsBytes);
   }
 
   async rawData(): Promise<Buffer> {
