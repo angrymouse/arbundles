@@ -17,6 +17,7 @@ export interface DataItemCreateOptions {
 }
 
 export async function getSignatureData(item: DataItem): Promise<Uint8Array> {
+  console.log("Is browser? ", isBrowser)
   if (isBrowser) {
     return webDeepHash([
       stringToBuffer("dataitem"),
